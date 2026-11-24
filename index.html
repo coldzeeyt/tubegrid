@@ -40,7 +40,7 @@ body.hide #hud.minimal-off{opacity:0}
 <div id="empty"><div><h1>How many can it take?</h1><p>Paste a YouTube link, then start stacking.</p></div></div>
 
 <div id="hud" class="minimal-off">
-  <div class="pill glass"><b id="count">0</b><span>videos</span></div>
+  <div class="pill glass"><b id="count">0</b><span id="pend">videos</span></div>
   <div class="pill glass" id="fps"><b id="fpsv">--</b><span>fps</span></div>
 </div>
 
@@ -60,7 +60,7 @@ body.hide #hud.minimal-off{opacity:0}
 const stage=document.getElementById('stage'),countEl=document.getElementById('count'),
       fpsEl=document.getElementById('fps'),fpsV=document.getElementById('fpsv'),
       urlIn=document.getElementById('url'),empty=document.getElementById('empty'),
-      soundBtn=document.getElementById('sound');
+      soundBtn=document.getElementById('sound'),pendEl=document.getElementById('pend');
 let sound=false,n=0;
 
 function vid(s){
@@ -89,23 +89,35 @@ function layout(){
   stage.style.gridAutoRows=h+'px';
 }
 
-function add(k){
+let queue=0,timer=null;
+const GAP=250;
+
+function addOne(){
   const id=vid(urlIn.value);
-  if(!id){urlIn.focus();urlIn.style.borderColor='#ff3b4a';return}
+  if(!id){queue=0;return}
+  const f=document.createElement('iframe');
+  f.src=src(id);f.allow='autoplay; encrypted-media; picture-in-picture';
+  f.referrerPolicy='strict-origin-when-cross-origin';
+  stage.appendChild(f);n++;update();
+}
+
+function pump(){
+  if(queue>0){addOne();queue--;timer=setTimeout(pump,GAP)}
+  else timer=null;
+  pendEl.textContent=queue?`+${queue} loading`:'videos';
+}
+
+function add(k){
+  if(!vid(urlIn.value)){urlIn.focus();urlIn.style.borderColor='#ff3b4a';return}
   urlIn.style.borderColor='';
-  const s=src(id),frag=document.createDocumentFragment();
-  for(let i=0;i<k;i++){
-    const f=document.createElement('iframe');
-    f.src=s;f.allow='autoplay; encrypted-media; picture-in-picture';
-    f.referrerPolicy='strict-origin-when-cross-origin';f.loading='eager';
-    frag.appendChild(f);
-  }
-  stage.appendChild(frag);n+=k;update();
+  queue+=k;
+  if(!timer)pump();
 }
 
 function remove(k){
+  queue=0;
   for(let i=0;i<k&&stage.lastChild;i++)stage.lastChild.remove();
-  n=stage.children.length;update();
+  n=stage.children.length;update();pendEl.textContent='videos';
 }
 
 function update(){
@@ -116,7 +128,7 @@ function update(){
 
 document.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(+b.dataset.add)));
 document.getElementById('minus').addEventListener('click',()=>remove(10));
-document.getElementById('clear').addEventListener('click',()=>{stage.innerHTML='';n=0;update()});
+document.getElementById('clear').addEventListener('click',()=>{queue=0;stage.innerHTML='';n=0;update();pendEl.textContent='videos'});
 soundBtn.addEventListener('click',()=>{sound=!sound;soundBtn.textContent=sound?'Sound on':'Sound off';soundBtn.classList.toggle('on',sound)});
 document.getElementById('hide').addEventListener('click',()=>document.body.classList.add('hide'));
 addEventListener('keydown',e=>{
