@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Tube Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#07080c;--ink:#f4f6fb;--glass:rgba(255,255,255,.08);--edge:rgba(255,255,255,.18);--hi:rgba(255,255,255,.35);--accent:#ff3b4a}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:500 15px/1.2 "Space Grotesk",system-ui,sans-serif;overflow:hidden}
+body::before{content:"";position:fixed;inset:-20%;background:radial-gradient(40% 50% at 20% 20%,#2b1a5c 0,transparent 70%),radial-gradient(40% 50% at 85% 80%,#5c1a2b 0,transparent 70%);filter:blur(40px);z-index:-1}
+#stage{position:fixed;inset:0;display:grid;place-content:center;gap:0}
+#stage iframe{display:block;border:0;width:100%;height:100%;background:#000}
+.glass{background:var(--glass);border:1px solid var(--edge);box-shadow:inset 0 1px 0 var(--hi),0 20px 50px rgba(0,0,0,.45);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%)}
+#bar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px;border-radius:26px;max-width:calc(100vw - 24px);z-index:5;transition:opacity .25s,transform .25s}
+#hud{position:fixed;top:20px;left:20px;display:flex;gap:10px;z-index:5;transition:opacity .25s}
+.pill{border-radius:20px;padding:10px 18px;display:flex;flex-direction:column;gap:2px;min-width:110px}
+.pill b{font:700 34px/1 "Space Grotesk",sans-serif;font-variant-numeric:tabular-nums}
+.pill span{font-size:13px;opacity:.7}
+#fps.bad b{color:var(--accent)}
+input{font:inherit;font-size:16px;color:var(--ink);background:rgba(0,0,0,.35);border:1px solid var(--edge);border-radius:16px;padding:12px 16px;width:min(340px,70vw);outline:none}
+input:focus{border-color:var(--hi)}
+button{font:inherit;color:var(--ink);background:rgba(255,255,255,.1);border:1px solid var(--edge);border-radius:16px;min-height:44px;padding:0 16px;cursor:pointer;transition:background .15s,transform .1s}
+button:hover{background:rgba(255,255,255,.18)}button:active{transform:scale(.96)}
+button.on{background:var(--accent);border-color:transparent}
+button.go{background:#fff;color:#07080c}
+body.hide #bar{opacity:0;transform:translateX(-50%) translateY(20px);pointer-events:none}
+body.hide #hud.minimal-off{opacity:0}
+#empty{position:fixed;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
+#empty h1{font:700 clamp(36px,6vw,72px)/1 "Space Grotesk";letter-spacing:-.02em}
+#empty p{margin-top:12px;opacity:.6;font-size:17px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="empty"><div><h1>How many can it take?</h1><p>Paste a YouTube link, then start stacking.</p></div></div>
+
+<div id="hud" class="minimal-off">
+  <div class="pill glass"><b id="count">0</b><span>videos</span></div>
+  <div class="pill glass" id="fps"><b id="fpsv">--</b><span>fps</span></div>
+</div>
+
+<div id="bar" class="glass">
+  <input id="url" placeholder="Paste YouTube link or ID" value="https://www.youtube.com/watch?v=aqz-KE-bpKQ">
+  <button class="go" data-add="1">+1</button>
+  <button data-add="10">+10</button>
+  <button data-add="50">+50</button>
+  <button id="minus">−10</button>
+  <button id="sound">Sound off</button>
+  <button id="clear">Clear</button>
+  <button id="hide">Hide UI (H)</button>
+</div>
+
+<script>
+{
+const stage=document.getElementById('stage'),countEl=document.getElementById('count'),
+      fpsEl=document.getElementById('fps'),fpsV=document.getElementById('fpsv'),
+      urlIn=document.getElementById('url'),empty=document.getElementById('empty'),
+      soundBtn=document.getElementById('sound');
+let sound=false,n=0;
+
+function vid(s){
+  s=s.trim();
+  const m=s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([\w-]{11})/);
+  if(m)return m[1];
+  return /^[\w-]{11}$/.test(s)?s:null;
+}
+
+function src(id){
+  const p=new URLSearchParams({autoplay:1,mute:sound?0:1,loop:1,playlist:id,controls:0,
+    playsinline:1,rel:0,modestbranding:1,iv_load_policy:3,origin:location.origin});
+  return 'https://www.youtube-nocookie.com/embed/'+id+'?'+p;
+}
+
+function layout(){
+  const W=innerWidth,H=innerHeight,a=16/9;
+  if(!n){stage.style.gridTemplateColumns='';return}
+  let best=0,bc=1;
+  for(let c=1;c<=n;c++){
+    const r=Math.ceil(n/c),w=Math.min(W/c,(H/r)*a);
+    if(w>best){best=w;bc=c}
+  }
+  const w=Math.floor(best),h=Math.floor(best/a);
+  stage.style.gridTemplateColumns=`repeat(${bc},${w}px)`;
+  stage.style.gridAutoRows=h+'px';
+}
+
+function add(k){
+  const id=vid(urlIn.value);
+  if(!id){urlIn.focus();urlIn.style.borderColor='#ff3b4a';return}
+  urlIn.style.borderColor='';
+  const s=src(id),frag=document.createDocumentFragment();
+  for(let i=0;i<k;i++){
+    const f=document.createElement('iframe');
+    f.src=s;f.allow='autoplay; encrypted-media; picture-in-picture';
+    f.referrerPolicy='strict-origin-when-cross-origin';f.loading='eager';
+    frag.appendChild(f);
+  }
+  stage.appendChild(frag);n+=k;update();
+}
+
+function remove(k){
+  for(let i=0;i<k&&stage.lastChild;i++)stage.lastChild.remove();
+  n=stage.children.length;update();
+}
+
+function update(){
+  countEl.textContent=n.toLocaleString();
+  empty.style.display=n?'none':'grid';
+  layout();
+}
+
+document.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(+b.dataset.add)));
+document.getElementById('minus').addEventListener('click',()=>remove(10));
+document.getElementById('clear').addEventListener('click',()=>{stage.innerHTML='';n=0;update()});
+soundBtn.addEventListener('click',()=>{sound=!sound;soundBtn.textContent=sound?'Sound on':'Sound off';soundBtn.classList.toggle('on',sound)});
+document.getElementById('hide').addEventListener('click',()=>document.body.classList.add('hide'));
+addEventListener('keydown',e=>{
+  if(e.target===urlIn)return;
+  const k=e.key.toLowerCase();
+  if(k==='h')document.body.classList.toggle('hide');
+  if(k==='1')add(1);if(k==='2')add(10);if(k==='3')add(50);
+});
+addEventListener('resize',layout);
+
+let frames=0,last=performance.now();
+const tick=t=>{
+  frames++;
+  if(t-last>=1000){
+    const f=Math.round(frames*1000/(t-last));
+    fpsV.textContent=f;fpsEl.classList.toggle('bad',f<30);
+    frames=0;last=t;
+  }
+  requestAnimationFrame(tick);
+};
+requestAnimationFrame(tick);
+update();
+}
+</script>
+</body>
+</html>
